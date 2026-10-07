@@ -1,0 +1,20 @@
+name: weekly-update
+on:
+  schedule: [{cron: "30 3 * * 6"}]   # Saturday 09:00 IST
+  workflow_dispatch:
+permissions: {contents: write}
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt && python tracker.py --selftest
+      # NSDL may block runner IPs; page then shows the stale "FII data through" date instead of failing
+      - run: python fetch_fii.py || echo "::warning::NSDL fetch failed, append fii_flows.csv manually"
+      - run: python tracker.py
+      - run: |
+          git config user.name "tracker-bot" && git config user.email "actions@github.com"
+          git add docs/index.html fii_flows.csv && git commit -m "Weekly update" || echo "no change"
+          git push
