@@ -16,13 +16,21 @@ PERIODS = {"Taper tantrum, May–Aug 2013": ("2013-05-01", "2013-08-31"), "Crude
            "Covid, Mar 2020": ("2020-03-01", "2020-03-31"), "Fed hikes, H1 2022": ("2022-01-01", "2022-06-30"),
            "FII selloff, Oct 2024–Feb 2025": ("2024-10-01", "2025-02-28")}
 V1 = ["11/18", "8/8", "2/4", "11/25", "7/22"]   # Pressure weeks under v1, frozen at the first sanity check
+READ = {  # one-line answer to "catch-up or grind?" per regime
+    "Pressure": f"Neither yet: pressure is still building. A grind starts when it stops rising; a catch-up needs it to fall more than {abs(SHARP)} in four weeks.",
+    "Grind": f"Grind: pressure is elevated but no longer rising. A catch-up needs it to fall more than {abs(SHARP)} in four weeks.",
+    "Catch-up": "Catch-up: pressure is easing sharply from an elevated level.",
+    "Calm": "Neither: there is little flow pressure to grind through or catch up from.",
+}
 COLORS = {"Pressure": "#B23A48", "Grind": "#C98B2B", "Catch-up": "#2A7F62", "Calm": "#8A96A8"}
 
 
 def load_prices():
     import yfinance as yf
     px = yf.download(list(TICKERS.values()), start=START, auto_adjust=True, progress=False)["Close"]
-    return px.rename(columns={v: k for k, v in TICKERS.items()}).resample("W-FRI").last().ffill()
+    w = px.rename(columns={v: k for k, v in TICKERS.items()}).resample("W-FRI").last().ffill()
+    w.attrs["last"] = min(px[c].last_valid_index() for c in px)   # date every series has a price for
+    return w
 
 
 def load_fii(path="fii_flows.csv"):
@@ -59,7 +67,7 @@ def replay(d):
     return pd.DataFrame({"weeks": r.size(), "median": r.median(), "hit": r.apply(lambda x: (x > 0).mean())})
 
 
-def failures(d, n=5, gap=8):
+def failures(d, n=5, gap=FWD):  # gap = one forward window, so one episode = one entry
     """Worst calls: Catch-up/Calm weeks followed by the biggest Nifty falls, one per episode."""
     bad = d[d.regime.isin(["Catch-up", "Calm"]) & (d.fwd < 0)].sort_values("fwd")
     kept = []
@@ -71,7 +79,7 @@ def failures(d, n=5, gap=8):
     return kept
 
 
-def render(d, fii_last):
+def render(d, fii_last, px_last):
     now = d.iloc[-1]
     fig = go.Figure()
     for reg, col in COLORS.items():
@@ -82,13 +90,13 @@ def render(d, fii_last):
                       paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_family="IBM Plex Sans",
                       yaxis=dict(title="Pressure (z)"), yaxis2=dict(overlaying="y", side="right", type="log", showgrid=False),
                       legend=dict(orientation="h", y=-0.12))
-    sig = "".join(f"<tr><td>{LABELS[k]}</td><td>{now[k]:+.2f}</td><td>{'adds pressure' if now[k] > 0 else 'eases pressure'}</td></tr>"
+    sig = "".join(f"<tr><td>{LABELS[k]}</td><td>{now[k]:+.2f}</td><td>{'neutral' if abs(now[k]) < 0.5 else 'adds pressure' if now[k] > 0 else 'eases pressure'}</td></tr>"
                   for k in LABELS if pd.notna(now[k]))
     rp = replay(d).reindex(list(COLORS)).dropna()
     rep = "".join(f"<tr><td>{k}</td><td>{int(v.weeks)}</td><td>{v['median']:+.1%}</td><td>{v.hit:.0%}</td></tr>" for k, v in rp.iterrows())
     ver = "".join(f"<tr><td>{k}</td><td>{v1}</td><td>{(w.regime == 'Pressure').sum()}/{len(w)}</td></tr>"
                   for (k, (a, b)), v1 in zip(PERIODS.items(), V1) for w in [d.loc[a:b]])
-    fail = "".join(f"<li><b>{t:%d %b %Y}</b>: read {r.regime}, Nifty then fell {r.fwd:.1%} over {FWD} weeks. {NOTES.get(f'{t:%Y-%m-%d}', '')}</li>" for t, r in failures(d))
+    fail = "".join(f"<li><b>{t:%d %b %Y}</b>: read {r.regime}, Nifty then fell {-r.fwd:.1%} over {FWD} weeks. {NOTES.get(f'{t:%Y-%m-%d}', '')}</li>" for t, r in failures(d))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Catch-up or grind? India flow-regime tracker</title>
@@ -103,14 +111,15 @@ p,li{{max-width:68ch}} .muted{{color:var(--muted);font-size:.9rem}}
 table{{border-collapse:collapse;width:100%}} td,th{{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}}
 .wrap{{overflow-x:auto}}
 </style></head><body><main>
-<p class="muted">Week ending {d.index[-1]:%d %b %Y}. FII data through {fii_last:%d %b %Y}.</p>
+<p class="muted">Prices through {px_last:%d %b %Y}. FII data through {fii_last:%d %b %Y}.</p>
 <p>Is India's flow-driven regime heading for a catch-up or a grind? This week's read:</p>
 <h1>{now.regime}</h1>
+<p><b>{READ[now.regime]}</b></p>
 <p>Composite pressure {now.pressure:+.2f} (z-score), {abs(now.d4):.2f} {'lower' if now.d4 < 0 else 'higher'} than four weeks ago.</p>
 <div class="wrap">{fig.to_html(full_html=False, include_plotlyjs="cdn")}</div>
 <h2>What each signal says now</h2><div class="wrap"><table><tr><th>Signal</th><th>z-score</th><th>Effect</th></tr>{sig}</table></div>
 <h2>Regimes describe, they don't forecast</h2>
-<p>Nifty over the next {FWD} weeks, replayed since {d.index[0]:%Y}. Pressure weeks were followed by positive median returns ({rp['median']['Pressure']:+.1%}); Catch-up's weak result is a small, overlapping sample ({int(rp.weeks['Catch-up'])} weeks, roughly {int(rp.weeks['Catch-up']) // FWD} independent {FWD}-week windows).</p>
+<p>Nifty over the next {FWD} weeks, replayed since {d.index[0]:%Y}. No regime separates forward returns: medians range {rp['median'].min():+.1%} to {rp['median'].max():+.1%}, {rp.hit.min() * 100:.0f}–{rp.hit.max():.0%} of weeks positive.</p>
 <div class="wrap"><table><tr><th>Regime</th><th>Weeks</th><th>Median return</th><th>Share positive</th></tr>{rep}</table></div>
 <p class="muted">Overlapping windows, so weeks are not independent samples.</p>
 <h2>Where it fails</h2><ul>{fail}</ul>
@@ -133,7 +142,7 @@ def selftest():
     d = compute(px, fii)
     assert set(d.regime) <= set(COLORS) and d.index.is_monotonic_increasing
     assert d.regime.nunique() > 1, "regime never changes: check thresholds"
-    html = render(d, fii.index[-1])
+    html = render(d, fii.index[-1], idx[-1])
     assert "<h1>" in html and "Where it fails" in html
     print("selftest ok:", d.regime.value_counts().to_dict())
 
@@ -143,6 +152,7 @@ if __name__ == "__main__":
         selftest()
     else:
         fii = load_fii()
-        d = compute(load_prices(), fii)
-        open("docs/index.html", "w", encoding="utf-8").write(render(d, pd.to_datetime(pd.read_csv("fii_flows.csv").date).max()))
+        px = load_prices()
+        d = compute(px, fii)
+        open("docs/index.html", "w", encoding="utf-8").write(render(d, pd.to_datetime(pd.read_csv("fii_flows.csv").date).max(), px.attrs["last"]))
         print(f"{d.index[-1]:%Y-%m-%d}: {d.regime.iloc[-1]} (pressure {d.pressure.iloc[-1]:+.2f})")
