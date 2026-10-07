@@ -144,5 +144,5 @@ if __name__ == "__main__":
     else:
         fii = load_fii()
         d = compute(load_prices(), fii)
-        open("docs/index.html", "w", encoding="utf-8").write(render(d, fii.dropna().index[-1]))
+        open("docs/index.html", "w", encoding="utf-8").write(render(d, pd.to_datetime(pd.read_csv("fii_flows.csv").date).max()))
         print(f"{d.index[-1]:%Y-%m-%d}: {d.regime.iloc[-1]} (pressure {d.pressure.iloc[-1]:+.2f})")
