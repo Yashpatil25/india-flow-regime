@@ -29,7 +29,9 @@ def load_prices():
     import yfinance as yf
     px = yf.download(list(TICKERS.values()), start=START, auto_adjust=True, progress=False)["Close"]
     w = px.rename(columns={v: k for k, v in TICKERS.items()}).resample("W-FRI").last().ffill()
-    w.attrs["last"] = min(px[c].last_valid_index() for c in px)   # date every series has a price for
+    last = min(px[c].last_valid_index() for c in px)   # date every series has a price for
+    w = w.loc[:pd.offsets.Week(weekday=4).rollforward(last)]   # a stray weekend bar in one series must not open an empty week
+    w.attrs["last"] = last
     return w
 
 
@@ -154,5 +156,8 @@ if __name__ == "__main__":
         fii = load_fii()
         px = load_prices()
         d = compute(px, fii)
+        missing = [LABELS[k] for k in LABELS if pd.isna(d[k].iloc[-1])]
+        if missing:  # fail closed: a composite silently missing a signal is wrong, a stale page is not
+            sys.exit(f"Latest week {d.index[-1]:%Y-%m-%d} is missing {missing}; page not updated")
         open("docs/index.html", "w", encoding="utf-8").write(render(d, pd.to_datetime(pd.read_csv("fii_flows.csv").date).max(), px.attrs["last"]))
         print(f"{d.index[-1]:%Y-%m-%d}: {d.regime.iloc[-1]} (pressure {d.pressure.iloc[-1]:+.2f})")
