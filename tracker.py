@@ -11,6 +11,11 @@ FII_LOOK = 4   # v2 (after first sanity check): was LOOK with ZWIN z-score
 HI, SHARP = 0.5, -0.5  # calibration knobs: "elevated" pressure level, "sharp" 4-week easing
 LABELS = {"crude": "Brent crude", "usdinr": "USD/INR", "us10y": "US 10Y yield", "vix": "India VIX", "fii": "FII outflows"}
 NOTES = {  # your own explanation per "Where it fails" date, keyed "YYYY-MM-DD"
+    "2019-12-27": "Covid: falling crude and US yields counted as easing, and FII selling (+5.7σ by 20 Mar) came only after the read.",
+    "2011-07-08": "FII flows were flat at the read (−0.1σ). The US downgrade and eurozone stress pushed US yields down, which the model counts as easing; FII selling built later (+1.7σ by late Aug).",
+    "2025-12-26": "FII selling had started (+0.9σ) but the other signals offset it. Outflows then hit a record: +5.7σ by late March, about ₹1.36 lakh crore over 13 weeks.",
+    "2012-02-17": "The flow signal pointed the wrong way: FIIs were buying hard (−1.3σ) and stayed net buyers through the fall, so the selloff came from outside the five inputs.",
+    "2015-11-27": "FII selling was already visible (+1.3σ), but falling crude counted as easing and outweighed it: the same crude blind spot as Covid.",
 }
 PERIODS = {"Taper tantrum, May–Aug 2013": ("2013-05-01", "2013-08-31"), "Crude and rupee, Sep–Oct 2018": ("2018-09-01", "2018-10-31"),
            "Covid, Mar 2020": ("2020-03-01", "2020-03-31"), "Fed hikes, H1 2022": ("2022-01-01", "2022-06-30"),
